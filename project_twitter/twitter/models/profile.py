@@ -53,12 +53,21 @@ class Profile(models.Model):
         # Retorna os usuários correspondentes aos IDs obtidos
         return User.objects.filter(id__in=user_ids)
 
-    def gravatar_url(self):
+    def followers_count(self):
         """
-        Retorna a URL do Gravatar usando o email do usuário, com hash MD5.
+        Retorna o número de seguidores do usuário atual.
         """
-        # Gera o hash MD5 do email do usuário em letras minúsculas
-        # skipcq: PTC-W1003
-        email_hash = hashlib.md5(self.user.email.lower().encode('utf-8')).hexdigest()
-        # Retorna a URL do Gravatar com o hash gerado e o tamanho da imagem
-        return f"https://www.gravatar.com/avatar/{email_hash}?d=identicon&s=150"
+        return self.followers().count()
+
+    def following_count(self):
+        """
+        Retorna o número de usuários que o usuário atual está seguindo.
+        """
+        return self.following().count()
+
+
+    @property
+    def image_url(self):
+        if self.image and hasattr(self.image, 'url'):
+            return self.image.url
+        return 'https://cdn-icons-png.flaticon.com/512/709/709722.pn'

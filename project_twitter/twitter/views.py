@@ -1,149 +1,165 @@
 # twitter/views.py
 
-from django.shortcuts import render, redirect, get_object_or_404  # Importa funções utilitárias do Django
-from .models import Profile, Post, Relationship, Like  # Importa os modelos Profile, Post, Relationship e Like
-from .forms import UserRegisterForm, PostForm, ProfileUpdateForm, UserUpdateForm, CommentForm  # Importa os formulários personalizados
-from django.contrib.auth.models import User  # Importa o modelo de usuário padrão do Django
-from django.contrib.auth.decorators import login_required  # Importa o decorador login_required para proteger views
-from django.contrib import messages  # Importa o módulo de mensagens do Django para feedback ao usuário
-from django.db import IntegrityError, transaction  # Importa módulos para controle de transações e tratamento de erros
+from django.shortcuts import render, redirect, get_object_or_404
+from .models import Profile, Post, Relationship, Like
+from .forms import UserRegisterForm, PostForm, ProfileUpdateForm, UserUpdateForm, CommentForm
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.db import IntegrityError, transaction
 
-# View para a página inicial, requer login
 @login_required
 def home(request):
-    posts = Post.objects.all().order_by('-timestamp')  # Obtém todos os posts ordenados por timestamp decrescente
+    posts = Post.objects.all().order_by('-timestamp')
 
     if request.method == "POST":
-        form = PostForm(request.POST)  # Cria uma instância do formulário com os dados do POST
+        form = PostForm(request.POST)
         if form.is_valid():
-            post = form.save(commit=False)  # Cria um objeto Post sem salvar no banco de dados ainda
-            post.user = request.user  # Define o usuário do post como o usuário logado
-            post.save()  # Salva o post no banco de dados
-            messages.success(request, "Tweet publicado com sucesso!")  # Adiciona uma mensagem de sucesso
-            return redirect("home")  # Redireciona para a página inicial
+            post = form.save(commit=False)
+            post.user = request.user
+            post.save()
+            messages.success(request, "Tweet publicado com sucesso!")
+            return redirect("home")
     else:
-        form = PostForm()  # Cria uma instância vazia do formulário
+        form = PostForm()
 
-    comment_form = CommentForm()  # Cria uma instância vazia do formulário de comentários
-    context = {"posts": posts, "form": form, "comment_form": comment_form}  # Contexto para renderização do template
-    return render(request, "twitter/newsfeed.html", context)  # Renderiza o template com o contexto
+    comment_form = CommentForm()
+    context = {"posts": posts, "form": form, "comment_form": comment_form}
+    return render(request, "twitter/newsfeed.html", context)
 
-# View para registro de novos usuários
 def register(request):
     if request.method == "POST":
-        form = UserRegisterForm(request.POST)  # Cria uma instância do formulário com os dados do POST
+        form = UserRegisterForm(request.POST)
         if form.is_valid():
             try:
-                with transaction.atomic():  # Inicia uma transação atômica
-                    form.save()  # Salva o novo usuário no banco de dados
-                messages.success(request, "Conta criada com sucesso! Você já pode fazer login.")  # Adiciona uma mensagem de sucesso
-                return redirect("login")  # Redireciona para a página de login
+                with transaction.atomic():
+                    form.save()
+                messages.success(request, "Conta criada com sucesso! Você já pode fazer login.")
+                return redirect("login")
             except IntegrityError:
-                form.add_error(None, "Ocorreu um erro ao criar a conta. Por favor, tente novamente.")  # Adiciona uma mensagem de erro ao formulário
+                form.add_error(None, "Ocorreu um erro ao criar a conta. Por favor, tente novamente.")
     else:
-        form = UserRegisterForm()  # Cria uma instância vazia do formulário
+        form = UserRegisterForm()
 
-    context = {"form": form}  # Contexto para renderização do template
-    return render(request, "twitter/register.html", context)  # Renderiza o template com o contexto
+    context = {"form": form}
+    return render(request, "twitter/register.html", context)
 
-# View para deletar um post
 @login_required
 def delete(request, post_id):
-    post = get_object_or_404(Post, id=post_id, user=request.user)  # Obtém o post ou retorna 404 se não encontrado
-    post.delete()  # Deleta o post
-    messages.success(request, "Tweet deletado com sucesso!")  # Adiciona uma mensagem de sucesso
-    return redirect("home")  # Redireciona para a página inicial
+    post = get_object_or_404(Post, id=post_id, user=request.user)
+    post.delete()
+    messages.success(request, "Tweet deletado com sucesso!")
+    return redirect("home")
 
-# View para exibir o perfil de um usuário
 def profile(request, username):
-    user = get_object_or_404(User, username=username)  # Obtém o usuário ou retorna 404 se não encontrado
-    posts = user.posts.all().order_by('-timestamp')  # Obtém todos os posts do usuário ordenados por timestamp decrescente
-    user_profile = get_object_or_404(Profile, user=user)  # Obtém o perfil do usuário ou retorna 404 se não encontrado
+    user = get_object_or_404(User, username=username)
+    posts = user.posts.all().order_by('-timestamp')
+    user_profile = get_object_or_404(Profile, user=user)
     is_following = False
     if request.user.is_authenticated:
-        is_following = Relationship.objects.filter(from_user=request.user, to_user=user).exists()  # Verifica se o usuário logado está seguindo o usuário do perfil
+        is_following = Relationship.objects.filter(from_user=request.user, to_user=user).exists()
+    followers_count = Relationship.objects.filter(to_user=user).count()
+    following_count = Relationship.objects.filter(from_user=user).count()
     context = {
         "user_profile": user,
         "profile": user_profile,
         "posts": posts,
-        "is_following": is_following
+        "is_following": is_following,
+        "followers_count": followers_count,
+        "following_count": following_count
     }
-    return render(request, "twitter/profile.html", context)  # Renderiza o template com o contexto
+    return render(request, "twitter/profile.html", context)
 
-# View para editar o perfil do usuário, requer login
 @login_required
 def editar(request):
-    user = request.user  # Obtém o usuário logado
-    user_profile, _ = Profile.objects.get_or_create(user=user)  # Obtém ou cria o perfil do usuário
+    user = request.user
+    user_profile, _ = Profile.objects.get_or_create(user=user)
 
     if request.method == "POST":
-        u_form = UserUpdateForm(request.POST, instance=user)  # Cria uma instância do formulário com os dados do POST e o usuário logado
-        p_form = ProfileUpdateForm(request.POST, request.FILES, instance=user_profile)  # Cria uma instância do formulário com os dados do POST e os arquivos enviados
+        u_form = UserUpdateForm(request.POST, instance=user)
+        p_form = ProfileUpdateForm(request.POST, request.FILES, instance=user_profile)
 
         if u_form.is_valid() and p_form.is_valid():
-            u_form.save()  # Salva as alterações no usuário
-            p_form.save()  # Salva as alterações no perfil
-            messages.success(request, "Seu perfil foi atualizado com sucesso!")  # Adiciona uma mensagem de sucesso
-            return redirect("editar")  # Redireciona de volta para a página de edição
+            u_form.save()
+            p_form.save()
+            messages.success(request, "Seu perfil foi atualizado com sucesso!")
+            return redirect("editar")
     else:
-        u_form = UserUpdateForm(instance=user)  # Cria uma instância do formulário com os dados do usuário logado
-        p_form = ProfileUpdateForm(instance=user_profile)  # Cria uma instância do formulário com os dados do perfil do usuário
+        u_form = UserUpdateForm(instance=user)
+        p_form = ProfileUpdateForm(instance=user_profile)
 
-    context = {"u_form": u_form, "p_form": p_form}  # Contexto para renderização do template
-    return render(request, "twitter/editar.html", context)  # Renderiza o template com o contexto
+    context = {"u_form": u_form, "p_form": p_form}
+    return render(request, "twitter/editar.html", context)
 
-# View para seguir um usuário, requer login
 @login_required
 def follow(request, username):
-    current_user = request.user  # Obtém o usuário logado
-    to_user = get_object_or_404(User, username=username)  # Obtém o usuário a ser seguido ou retorna 404 se não encontrado
-    if current_user != to_user:
-        Relationship.objects.get_or_create(from_user=current_user, to_user=to_user)  # Cria um relacionamento de seguir se não existir
-        messages.success(request, f"Você está seguindo {to_user.username}.")  # Adiciona uma mensagem de sucesso
-    return redirect("profile", username=username)  # Redireciona para o perfil do usuário seguido
+    current_user = request.user
+    to_user = get_object_or_404(User, username=username)
 
-# View para deixar de seguir um usuário, requer login
+    # Verifica se o usuário está tentando seguir a si mesmo
+    if current_user == to_user:
+        messages.warning(request, "Você não pode seguir a si mesmo.")
+        return redirect("profile", username=username)
+
+    # Verifica se o usuário já está seguindo o outro usuário
+    if Relationship.objects.filter(from_user=current_user, to_user=to_user).exists():
+        messages.warning(request, f"Você já está seguindo {to_user.username}.")
+    else:
+        # Cria o relacionamento de seguir
+        Relationship.objects.create(from_user=current_user, to_user=to_user)
+        messages.success(request, f"Você está seguindo {to_user.username}.")
+
+    return redirect("profile", username=username)
+
 @login_required
 def unfollow(request, username):
-    current_user = request.user  # Obtém o usuário logado
-    to_user = get_object_or_404(User, username=username)  # Obtém o usuário a ser deixado de seguir ou retorna 404 se não encontrado
-    Relationship.objects.filter(from_user=current_user, to_user=to_user).delete()  # Deleta o relacionamento de seguir
-    messages.success(request, f"Você deixou de seguir {to_user.username}.")  # Adiciona uma mensagem de sucesso
-    return redirect("profile", username=username)  # Redireciona para o perfil do usuário deixado de seguir
+    current_user = request.user
+    to_user = get_object_or_404(User, username=username)
 
-# View para adicionar comentários a um post
+    # Verifica se o usuário está tentando parar de seguir a si mesmo
+    if current_user == to_user:
+        messages.warning(request, "Você não pode parar de seguir a si mesmo.")
+        return redirect("profile", username=username)
+
+    # Verifica se o usuário está seguindo o outro usuário
+    if Relationship.objects.filter(from_user=current_user, to_user=to_user).exists():
+        # Remove o relacionamento de seguir
+        Relationship.objects.filter(from_user=current_user, to_user=to_user).delete()
+        messages.success(request, f"Você deixou de seguir {to_user.username}.")
+    else:
+        messages.warning(request, f"Você não está seguindo {to_user.username}.")
+
+    return redirect("profile", username=username)
+
 @login_required
 def add_comment(request, post_id):
-    post = get_object_or_404(Post, id=post_id)  # Obtém o post ou retorna 404 se não encontrado
+    post = get_object_or_404(Post, id=post_id)
 
     if request.method == "POST":
-        form = CommentForm(request.POST)  # Cria uma instância do formulário com os dados do POST
+        form = CommentForm(request.POST)
         if form.is_valid():
-            comment = form.save(commit=False)  # Cria um objeto Comment sem salvar no banco de dados ainda
-            comment.post = post  # Define o post do comentário
-            comment.user = request.user  # Define o usuário do comentário como o usuário logado
-            comment.save()  # Salva o comentário no banco de dados
-            messages.success(request, "Comentário adicionado com sucesso!")  # Adiciona uma mensagem de sucesso
-            return redirect('home')  # Redireciona para a página inicial
+            comment = form.save(commit=False)
+            comment.post = post
+            comment.user = request.user
+            comment.save()
+            messages.success(request, "Comentário adicionado com sucesso!")
+            return redirect('home')
     else:
-        form = CommentForm()  # Cria uma instância vazia do formulário
+        form = CommentForm()
 
-    context = {"form": form, "post": post}  # Contexto para renderização do template
-    return render(request, "twitter/add_comment.html", context)  # Renderiza o template com o contexto
+    context = {"form": form, "post": post}
+    return render(request, "twitter/add_comment.html", context)
 
-# View para curtir ou descurtir um post
 @login_required
 def like_post(request, post_id):
-    post = get_object_or_404(Post, id=post_id)  # Obtém o post ou retorna 404 se não encontrado
-    like, created = Like.objects.get_or_create(post=post, user=request.user)  # Obtém ou cria um objeto Like
+    post = get_object_or_404(Post, id=post_id)
+    like, created = Like.objects.get_or_create(post=post, user=request.user)
     if not created:
-        like.delete()  # Deleta o like se já existir
-        messages.success(request, "Você descurtiu o tweet.")  # Adiciona uma mensagem de sucesso
+        like.delete()
+        messages.success(request, "Você descurtiu o tweet.")
     else:
-        messages.success(request, "Você curtiu o tweet.")  # Adiciona uma mensagem de sucesso
-    return redirect('home')  # Redireciona para a página inicial
+        messages.success(request, "Você curtiu o tweet.")
+    return redirect('home')
 
-# View personalizada para erro 404
-# skipcq: PYL-W0613
 def custom_404(request, exception):
     return render(request, 'twitter/404.html', status=404)
